@@ -1,12 +1,15 @@
-name := "spark-avro"
+//scalastyle:off
+enablePlugins(GiltPublishPlugin)
 
 organization := "com.gilt"
 
 scalaVersion := "2.11.8"
 
-crossScalaVersions := Seq("2.10.6", "2.11.8")
+name := "spark-avro"
 
-spName := "gilt/spark-avro"
+scalaVersion := "2.11.8"
+
+crossScalaVersions := Seq("2.10.6", "2.11.8")
 
 sparkVersion := "2.1.1"
 
@@ -63,5 +66,3 @@ coverageHighlighting := {
   if (scalaBinaryVersion.value == "2.10") false
   else true
 }
-
-EclipseKeys.eclipseOutput := Some("target/eclipse")
