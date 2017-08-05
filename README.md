@@ -1,9 +1,9 @@
 # Avro Data Source for Apache Spark
 
+***Forked from https://github.com/databricks/spark-avro version 3.2.1***
+
 A library for reading and writing Avro data from [Spark SQL](http://spark.apache.org/docs/latest/sql-programming-guide.html).
 
-[![Build Status](https://travis-ci.org/databricks/spark-avro.svg?branch=master)](https://travis-ci.org/databricks/spark-avro)
-[![codecov.io](http://codecov.io/github/databricks/spark-avro/coverage.svg?branch=master)](http://codecov.io/github/databricks/spark-avro?branch=master)
 
 ## Requirements
 
@@ -72,15 +72,18 @@ This library supports reading all Avro types. It uses the following mapping from
 | boolean   | BooleanType    |
 | int       | IntegerType    |
 | long      | LongType       |
+| long/logical `timestampmillis`      | LongType       |
 | float     | FloatType      |
 | double    | DoubleType     |
 | bytes     | BinaryType     |
+| bytes/logical `decimal` | _:DecimalType |
 | string    | StringType     |
 | record    | StructType     |
 | enum      | StringType     |
 | array     | ArrayType      |
 | map       | MapType        |
 | fixed     | BinaryType     |
+| fixed/`uuid` (java.util.UUID)| StringType     |
 | union     | See below      |
 
 In addition to the types listed above, it supports reading `union` types. The following three types are considered basic `union` types:

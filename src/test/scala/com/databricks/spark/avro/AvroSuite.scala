@@ -51,7 +51,7 @@ class AvroSuite
   override protected def beforeAll(): Unit = {
     super.beforeAll()
     spark = SparkSession.builder()
-      .master("local")
+      .master("local[2]")
       .appName("AvroSuite")
       .config("spark.sql.files.maxPartitionBytes", 1024)
       .getOrCreate()
