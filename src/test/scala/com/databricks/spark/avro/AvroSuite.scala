@@ -21,9 +21,10 @@ import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.sql.{Date, Timestamp}
 import java.util.{TimeZone, UUID}
+import java.time.Instant
 
 import scala.collection.JavaConversions._
-import org.apache.avro.Schema
+import org.apache.avro.{Schema, SchemaBuilder}
 import org.apache.avro.Schema.{Field, Type}
 import org.apache.avro.file.DataFileWriter
 import org.apache.avro.generic.{GenericData, GenericDatumWriter, GenericRecord}
@@ -34,8 +35,14 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.types._
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import com.databricks.spark.avro.SchemaConverters.IncompatibleSchemaException
+import com.gilt.spark.avro.{AvroCustomTypes, AvroLogicalTypes}
 
-class AvroSuite extends FunSuite with BeforeAndAfterAll {
+class AvroSuite
+  extends FunSuite
+    with BeforeAndAfterAll
+    with AvroCustomTypes
+    with AvroLogicalTypes {
+
   val episodesFile = "src/test/resources/episodes.avro"
   val testFile = "src/test/resources/test.avro"
 
@@ -114,6 +121,140 @@ class AvroSuite extends FunSuite with BeforeAndAfterAll {
       }
     }
   }
+
+  test("test UUID avro custom type") {
+    val uuid = UUID.randomUUID()
+    TestUtils.withTempDir { dir =>
+
+      val schema = SchemaBuilder.record("SingleUuid")
+        .namespace("com.gilt.pickling.TestObjs")
+        .fields().name("uuid")
+        .`type`().fixed("UUID").namespace("gfc.avro").size(16).noDefault()
+        .endRecord()
+      val datumWriter = new GenericDatumWriter[GenericRecord](schema)
+      val dataFileWriter = new DataFileWriter[GenericRecord](datumWriter)
+      dataFileWriter.create(schema, new File(s"$dir.avro"))
+      val avroRec = new GenericData.Record(schema)
+      avroRec.put("uuid", encodeUuid(uuid))
+      dataFileWriter.append(avroRec)
+      dataFileWriter.flush()
+      dataFileWriter.close()
+      val df = spark.read.avro(s"$dir.avro")
+      assert(df.schema.fields === Seq(StructField("uuid", StringType, nullable = true)))
+      assert(df.collect().toSet == Set(Row(uuid.toString)))
+    }
+  }
+
+  test("test nullable UUID avro custom type") {
+    val uuid = UUID.randomUUID()
+    TestUtils.withTempDir { dir =>
+
+      val union = SchemaBuilder.unionOf()
+        .nullType()
+        .and()
+        .fixed("UUID").namespace("gfc.avro").size(16)
+        .endUnion()
+      val schema = SchemaBuilder.record("SingleOptionalUuid")
+        .namespace("com.gilt.pickling.TestObjs")
+        .fields()
+        .name("uuid")
+        .`type`(union)
+        .withDefault(null)
+        .endRecord()
+      val datumWriter = new GenericDatumWriter[GenericRecord](schema)
+      val dataFileWriter = new DataFileWriter[GenericRecord](datumWriter)
+      dataFileWriter.create(schema, new File(s"$dir.avro"))
+      val avroRec = new GenericData.Record(schema)
+      avroRec.put("uuid", encodeUuid(uuid))
+      dataFileWriter.append(avroRec)
+      dataFileWriter.flush()
+      dataFileWriter.close()
+      val df = spark.read.avro(s"$dir.avro")
+      assert(df.schema.fields === Seq(StructField("uuid", StringType, nullable = true)))
+      assert(df.collect().toSet == Set(Row(uuid.toString)))
+    }
+  }
+
+  test("test decimal avro logical type") {
+    val decimal = new java.math.BigDecimal("12345.20")
+    TestUtils.withTempDir { dir =>
+
+      val schema = new Schema.Parser().parse(
+        s"""
+           |{"namespace": "com.gilt.test",
+           |  "type" : "record",
+           |  "name" : "Decimal",
+           |  "fields" : [
+           |    {
+           |      "name" : "decimal",
+           |      "type" : {
+           |        "type" : "bytes",
+           |        "logicalType" : "decimal",
+           |        "precision" : 10,
+           |        "scale" : 2
+           |      }
+           |    }
+           |  ]
+           |}
+         """.stripMargin)
+
+      val datumWriter = new GenericDatumWriter[GenericRecord](schema)
+      val dataFileWriter = new DataFileWriter[GenericRecord](datumWriter)
+      dataFileWriter.create(schema, new File(s"$dir.avro"))
+      val avroRec = new GenericData.Record(schema)
+      avroRec.put("decimal", ByteBuffer.wrap(decimal.unscaledValue().toByteArray))
+      dataFileWriter.append(avroRec)
+      dataFileWriter.flush()
+      dataFileWriter.close()
+      val df = spark.read.avro(s"$dir.avro")
+      assert(
+        df.schema.fields ===
+          Seq(StructField("decimal", DataTypes.createDecimalType(10,2), nullable = true))
+      )
+      assert(df.collect().toSet == Set(Row(decimal)))
+    }
+  }
+
+  test("test datetime avro logical type") {
+
+    val now = Instant.now().toEpochMilli()
+    TestUtils.withTempDir { dir =>
+
+      val schema = new Schema.Parser().parse(
+        s"""
+           |{"namespace": "com.gilt.test",
+           |  "type": "record",
+           |  "name": "Timestamp",
+           |  "fields" : [
+           |    {
+           |      "name" : "timestamp",
+           |      "type" : {
+           |        "type" : "long",
+           |        "logicalType" : "timestamp-millis"
+           |      }
+           |    }
+           |  ]
+           |}
+           |
+         """.stripMargin)
+
+      val datumWriter = new GenericDatumWriter[GenericRecord](schema)
+      val dataFileWriter = new DataFileWriter[GenericRecord](datumWriter)
+      dataFileWriter.create(schema, new File(s"$dir.avro"))
+      val avroRec = new GenericData.Record(schema)
+      avroRec.put("timestamp", now)
+      dataFileWriter.append(avroRec)
+      dataFileWriter.flush()
+      dataFileWriter.close()
+      val df = spark.read.avro(s"$dir.avro")
+      assert(
+        df.schema.fields ===
+          Seq(StructField("timestamp", TimestampType, nullable = true))
+      )
+      assert(df.collect().toSet == Set(Row(new java.sql.Timestamp(now))))
+    }
+  }
+
 
   test("union(int, long) is read as long") {
     TestUtils.withTempDir { dir =>

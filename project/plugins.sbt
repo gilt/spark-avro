@@ -1,10 +1,10 @@
-resolvers += Resolver.url("artifactory", url("http://scalasbt.artifactoryonline.com/scalasbt/sbt-plugin-releases"))(Resolver.ivyStylePatterns)
+//scalastyle:off
+resolvers ++=  Seq(
+  "Gilt releases" at "https://nexus.gilt.com/nexus/content/repositories/releases",
+  "Third parties" at "https://nexus.gilt.com/nexus/service/local/repositories/thirdparty/content"
+)
 
-resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
-
-resolvers += "sonatype-releases" at "https://oss.sonatype.org/content/repositories/releases/"
-
-resolvers += "Spark Package Main Repo" at "https://dl.bintray.com/spark-packages/maven"
+addSbtPlugin("com.gilt.sbt" % "sbt-resolvers" % "0.0.13")
 
 addSbtPlugin("com.typesafe.sbteclipse" % "sbteclipse-plugin" % "4.0.0")
 
@@ -18,8 +18,4 @@ addSbtPlugin("org.scoverage" % "sbt-scoverage" % "1.5.0")
 
 addSbtPlugin("org.scalastyle" %% "scalastyle-sbt-plugin" % "0.8.0")
 
-addSbtPlugin("me.lessis" % "bintray-sbt" % "0.3.0")
-
-addSbtPlugin("com.github.gseitz" % "sbt-release" % "1.0.0")
-
-
+addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.3")

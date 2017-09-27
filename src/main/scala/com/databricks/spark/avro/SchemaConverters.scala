@@ -17,22 +17,24 @@ package com.databricks.spark.avro
 
 import java.nio.ByteBuffer
 
-import scala.collection.JavaConverters._
+import com.gilt.spark.avro.{AvroCustomTypes, AvroLogicalTypes}
 
+import scala.collection.JavaConverters._
 import org.apache.avro.generic.GenericData.Fixed
 import org.apache.avro.generic.{GenericData, GenericRecord}
 import org.apache.avro.{Schema, SchemaBuilder}
 import org.apache.avro.SchemaBuilder._
 import org.apache.avro.Schema.Type._
-
 import org.apache.spark.sql.catalyst.expressions.GenericRow
 import org.apache.spark.sql.types._
+
+import scala.util.{Failure, Success}
 
 /**
  * This object contains method that are used to convert sparkSQL schemas to avro schemas and vice
  * versa.
  */
-object SchemaConverters {
+object SchemaConverters extends AvroLogicalTypes with AvroCustomTypes {
 
   class IncompatibleSchemaException(msg: String, ex: Throwable = null) extends Exception(msg, ex)
 
@@ -46,13 +48,15 @@ object SchemaConverters {
       case INT => SchemaType(IntegerType, nullable = false)
       case STRING => SchemaType(StringType, nullable = false)
       case BOOLEAN => SchemaType(BooleanType, nullable = false)
-      case BYTES => SchemaType(BinaryType, nullable = false)
+      // TODO: Support for Avro decimal logical types
+      case BYTES => SchemaType(getBytesType(avroSchema), nullable = false)
       case DOUBLE => SchemaType(DoubleType, nullable = false)
       case FLOAT => SchemaType(FloatType, nullable = false)
-      case LONG => SchemaType(LongType, nullable = false)
-      case FIXED => SchemaType(BinaryType, nullable = false)
+      // TODO: Support for Avro datetimemillis logical types
+      case LONG => SchemaType(getLongType(avroSchema), nullable = false)
+      // TODO: Support for readable Java UUID types -> String
+      case FIXED => SchemaType(getFixedType(avroSchema), nullable = false)
       case ENUM => SchemaType(StringType, nullable = false)
-
       case RECORD =>
         val fields = avroSchema.getFields.asScala.map { f =>
           val schemaType = toSqlType(f.schema())
@@ -145,13 +149,25 @@ object SchemaConverters {
         sqlType: DataType, path: List[String]): AnyRef => AnyRef = {
       val avroType = avroSchema.getType
       (sqlType, avroType) match {
+        // TODO: support for UUID => String
+        case (StringType, FIXED) =>
+          (item: AnyRef) => decodeUuid(item) match {
+            case Success(uuid) => uuid
+            case Failure(ex) => throw ex
+          }
         // Avro strings are in Utf8, so we have to call toString on them
         case (StringType, STRING) | (StringType, ENUM) =>
           (item: AnyRef) => if (item == null) null else item.toString
         // Byte arrays are reused by avro, so we have to make a copy of them.
         case (IntegerType, INT) | (BooleanType, BOOLEAN) | (DoubleType, DOUBLE) |
-             (FloatType, FLOAT) | (LongType, LONG) =>
+             (FloatType, FLOAT) | (LongType, LONG)=>
           identity
+        // TODO: support LogicalTypes.DatetimeMillis => java.sql.Timestamp
+        case (TimestampType, LONG) =>
+          identity => decodeTimestamp(identity,avroSchema) match {
+            case Success(ts) => ts
+            case Failure(ex) => throw ex
+          }
         case (BinaryType, FIXED) =>
           (item: AnyRef) =>
             if (item == null) {
@@ -169,7 +185,11 @@ object SchemaConverters {
               byteBuffer.get(bytes)
               bytes
             }
-
+        case (_:DecimalType, BYTES) =>
+          (item: AnyRef) => decodeDecimal(item, avroSchema) match {
+            case Success(uuid) => uuid
+            case Failure(ex) => throw ex
+          }
         case (struct: StructType, RECORD) =>
           val length = struct.fields.length
           val converters = new Array[AnyRef => AnyRef](length)
